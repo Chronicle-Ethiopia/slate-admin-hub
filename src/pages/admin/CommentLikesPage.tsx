@@ -51,7 +51,7 @@ export default function CommentLikesPage() {
     {
       key: 'user_id',
       header: 'User',
-      render: (cl) => getUserName(cl.user_id),
+      render: (cl) => getUserName(cl),
     },
     {
       key: 'comment_id',

@@ -488,11 +488,32 @@ export default function UsersPage() {
 
   const handleSubmit = () => {
     if (editingUser) {
-      updateUserMutation.mutate({
+      // Create update data with only non-null/empty fields
+      const updateData: Partial<Profile> & { id: string; password?: string } = {
         id: editingUser.id,
-        ...formData,
-        age: Number(formData.age) || null,
-      });
+      };
+
+      // Only include fields that have values
+      if (formData.full_name.trim()) updateData.full_name = formData.full_name.trim();
+      if (formData.age.trim()) updateData.age = Number(formData.age) || null;
+      if (formData.gender.trim()) updateData.gender = formData.gender.trim();
+      if (formData.phone.trim()) updateData.phone = formData.phone.trim();
+      if (formData.bio.trim()) updateData.bio = formData.bio.trim();
+      if (formData.role) updateData.role = formData.role;
+      if (formData.password.trim()) updateData.password = formData.password.trim();
+      
+      // Always include is_active as it's a boolean
+      updateData.is_active = formData.is_active;
+
+      // Check if there's anything to update
+      const hasUpdates = Object.keys(updateData).length > 2; // More than just id and password
+      
+      if (!hasUpdates && !formData.password.trim()) {
+        toast.error('Please fill in at least one field to update');
+        return;
+      }
+
+      updateUserMutation.mutate(updateData);
     } else {
       // Note: Creating users requires auth integration
       toast.error('User creation requires authentication integration');

@@ -39,6 +39,7 @@ interface DataTableProps<T> {
   onBulkReject?: (items: T[]) => void;
   addLabel?: string;
   exportFileName?: string;
+  extraActions?: React.ReactNode;
 }
 
 function exportToCSV<T extends { id: string }>(data: T[], columns: Column<T>[], filename: string) {
@@ -120,6 +121,7 @@ export function DataTable<T extends { id: string }>({
   onBulkReject,
   addLabel = 'Add New',
   exportFileName = 'export',
+  extraActions,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -251,6 +253,8 @@ export function DataTable<T extends { id: string }>({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          
+          {extraActions}
           
           {onAdd && (
             <Button onClick={onAdd} className="gap-2">

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Bell, Search, Settings, ExternalLink, User, MessageSquare, Heart, UserPlus, Calendar } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { Button } from '@/components/ui/button';
@@ -137,20 +137,21 @@ export function AdminHeader({ title }: AdminHeaderProps) {
     },
   });
 
-  // Generate user activity notifications
-  const generateUserNotifications = () => {
-    const userNotifications: Notification[] = [];
+  // Generate user activity notifications with useMemo to prevent infinite re-renders
+  const userNotifications = useMemo(() => {
+    const notifications: Notification[] = [];
+    const now = new Date().toISOString(); // Create timestamp once
     
     // User joined notifications
     users.forEach(user => {
-      userNotifications.push({
+      notifications.push({
         id: `user-${user.id}`,
         type: 'user_joined',
         title: 'New User Joined',
         message: `${user.full_name} has joined the platform`,
         user_name: user.full_name,
         user_id: user.id,
-        created_at: user.created_at || new Date().toISOString(),
+        created_at: user.created_at || now,
         read: false,
       });
     });
@@ -158,7 +159,7 @@ export function AdminHeader({ title }: AdminHeaderProps) {
     // Post created notifications
     posts.forEach(post => {
       const author = users.find(u => u.id === post.author_id);
-      userNotifications.push({
+      notifications.push({
         id: `post-${post.id}`,
         type: 'post_created',
         title: 'New Post Created',
@@ -175,7 +176,7 @@ export function AdminHeader({ title }: AdminHeaderProps) {
     comments.forEach(comment => {
       const author = users.find(u => u.id === comment.author_id);
       const post = posts.find(p => p.id === comment.post_id);
-      userNotifications.push({
+      notifications.push({
         id: `comment-${comment.id}`,
         type: 'comment_created',
         title: 'New Comment',
@@ -189,14 +190,13 @@ export function AdminHeader({ title }: AdminHeaderProps) {
       });
     });
 
-    return userNotifications.sort((a, b) => 
+    return notifications.sort((a, b) => 
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     ).slice(0, 20);
-  };
+  }, [users, posts, comments]);
 
-  const userNotifications = generateUserNotifications();
-  const allNotifications = [...notifications, ...userNotifications];
-  const unreadCount = allNotifications.filter(n => !n.read).length;
+  const allNotifications = useMemo(() => [...notifications, ...userNotifications], [notifications, userNotifications]);
+  const unreadCount = useMemo(() => allNotifications.filter(n => !n.read).length, [allNotifications]);
 
   // Search functionality
   useEffect(() => {
