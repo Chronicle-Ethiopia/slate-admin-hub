@@ -382,7 +382,7 @@ export default function Dashboard() {
         navigate('/admin/analytics');
         break;
       case 'settings':
-        navigate('/admin/settings');
+        navigate('/settings');
         break;
       default:
         console.log('Unknown action:', action);
