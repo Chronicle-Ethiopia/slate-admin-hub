@@ -154,7 +154,7 @@ export default function UsersPage() {
   });
 
   // Filter users based on search, role, and status
-  const filteredUsers = users.filter(user => {
+  const filteredUsers = (users as any).filter((user: any) => {
     const matchesSearch = searchTerm === '' || 
       user.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (user.phone && user.phone.includes(searchTerm));
@@ -175,8 +175,8 @@ export default function UsersPage() {
       const { id, password, ...profileData } = userData;
       
       // Update profile data
-      const { data, error } = await supabaseAdmin
-        .from('profiles')
+      const { data, error } = await (supabaseAdmin
+        .from('profiles') as any)
         .update(profileData)
         .eq('id', id)
         .select('id, full_name, role, is_active, blocked')
@@ -310,8 +310,8 @@ export default function UsersPage() {
       console.log('Blocking user:', { userId, blocked });
       
       // Use admin client for elevated permissions
-      const { data, error } = await supabaseAdmin
-        .from('profiles')
+      const { data, error } = await (supabaseAdmin
+        .from('profiles') as any)
         .update({ blocked })
         .eq('id', userId)
         .select('id, blocked');
@@ -354,8 +354,8 @@ export default function UsersPage() {
       message: string;
       type: string;
     }) => {
-      const { data, error } = await supabaseAdmin
-        .from('notifications')
+      const { data, error } = await (supabaseAdmin
+        .from('notifications') as any)
         .insert({
           user_id: notificationData.user_id,
           title: notificationData.title,

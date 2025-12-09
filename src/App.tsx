@@ -22,6 +22,7 @@ import UserRolesPage from "./pages/admin/UserRolesPage";
 import RoleAuditPage from "./pages/admin/RoleAuditPage";
 import PostImagesPage from "./pages/admin/PostImagesPage";
 import CommentLikesPage from "./pages/admin/CommentLikesPage";
+import AnalyticsPage from "./pages/admin/AnalyticsPage"
 
 const queryClient = new QueryClient();
 
@@ -50,6 +51,7 @@ const App = () => (
               <Route path="user-roles" element={<UserRolesPage />} />
               <Route path="role-audit" element={<RoleAuditPage />} />
               <Route path="post-images" element={<PostImagesPage />} />
+              <Route path="analytics" element={<AnalyticsPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import React from 'react';
 import {
   Table,
   TableBody,
@@ -135,16 +136,100 @@ export function DataTable<T extends { id: string }>({
     return item[key as keyof T];
   };
 
+  // Enhanced search function that searches across all searchable content
+  const isSearchMatch = (item: T, searchTerm: string): boolean => {
+    if (!searchTerm) return true;
+    
+    const searchLower = searchTerm.toLowerCase();
+    
+    // Search across all columns
+    return columns.some((column) => {
+      try {
+        // First, try to get the raw value
+        const value = getValue(item, column.key);
+        
+        // If column has a custom render function, try to extract text from rendered content
+        if (column.render) {
+          try {
+            const rendered = column.render(item);
+            
+            // Handle different types of rendered content
+            if (typeof rendered === 'string') {
+              return rendered.toLowerCase().includes(searchLower);
+            } else if (React.isValidElement(rendered)) {
+              // For React elements, try to extract text content
+              const elementText = extractTextFromReactElement(rendered);
+              return elementText.toLowerCase().includes(searchLower);
+            } else if (typeof rendered === 'object' && rendered !== null) {
+              // For objects, stringify and search
+              return JSON.stringify(rendered).toLowerCase().includes(searchLower);
+            }
+          } catch (renderError) {
+            // If render fails, fall back to raw value
+          }
+        }
+        
+        // Handle different value types for raw data
+        if (value === null || value === undefined) {
+          return false;
+        }
+        
+        // Convert to string and search
+        const stringValue = String(value).toLowerCase();
+        
+        // Check if search term is found in the string value
+        return stringValue.includes(searchLower);
+      } catch (error) {
+        // If there's an error accessing the value, skip this column
+        return false;
+      }
+    });
+  };
+
+  // Helper function to extract text from React elements
+  const extractTextFromReactElement = (element: React.ReactNode): string => {
+    if (typeof element === 'string') {
+      return element;
+    }
+    
+    if (typeof element === 'number') {
+      return String(element);
+    }
+    
+    if (React.isValidElement(element)) {
+      const props = element.props as any;
+      let text = '';
+      
+      // Extract from children
+      if (props.children) {
+        if (Array.isArray(props.children)) {
+          text = props.children.map(extractTextFromReactElement).join(' ');
+        } else {
+          text = extractTextFromReactElement(props.children);
+        }
+      }
+      
+      // Also check common text props
+      if (props.title) text += ' ' + props.title;
+      if (props.alt) text += ' ' + props.alt;
+      if (props.placeholder) text += ' ' + props.placeholder;
+      
+      return text;
+    }
+    
+    return '';
+  };
+
   const filteredData = searchKey
-    ? data.filter((item) =>
-        String(item[searchKey]).toLowerCase().includes(search.toLowerCase())
-      )
-    : data.filter((item) =>
-        columns.some((column) => {
-          const value = getValue(item, column.key);
+    ? data.filter((item) => {
+        try {
+          const value = getValue(item, searchKey);
           return value && String(value).toLowerCase().includes(search.toLowerCase());
-        })
-      );
+        } catch (error) {
+          return false;
+        }
+      })
+    : data.filter((item) => isSearchMatch(item, search));
 
   const totalPages = Math.ceil(filteredData.length / perPage);
   const paginatedData = filteredData.slice((page - 1) * perPage, page * perPage);

@@ -143,7 +143,7 @@ export function AdminHeader({ title }: AdminHeaderProps) {
     const now = new Date().toISOString(); // Create timestamp once
     
     // User joined notifications
-    users.forEach(user => {
+    (users as any).forEach((user: any) => {
       notifications.push({
         id: `user-${user.id}`,
         type: 'user_joined',
@@ -157,8 +157,8 @@ export function AdminHeader({ title }: AdminHeaderProps) {
     });
 
     // Post created notifications
-    posts.forEach(post => {
-      const author = users.find(u => u.id === post.author_id);
+    (posts as any).forEach((post: any) => {
+      const author = (users as any).find((u: any) => u.id === post.author_id);
       notifications.push({
         id: `post-${post.id}`,
         type: 'post_created',
@@ -173,9 +173,9 @@ export function AdminHeader({ title }: AdminHeaderProps) {
     });
 
     // Comment created notifications
-    comments.forEach(comment => {
-      const author = users.find(u => u.id === comment.author_id);
-      const post = posts.find(p => p.id === comment.post_id);
+    (comments as any).forEach((comment: any) => {
+      const author = (users as any).find((u: any) => u.id === comment.author_id);
+      const post = (posts as any).find((p: any) => p.id === comment.post_id);
       notifications.push({
         id: `comment-${comment.id}`,
         type: 'comment_created',
@@ -209,7 +209,7 @@ export function AdminHeader({ title }: AdminHeaderProps) {
     const results: SearchResult[] = [];
 
     // Search users
-    users.forEach(user => {
+    (users as any).forEach((user: any) => {
       if (user.full_name.toLowerCase().includes(query)) {
         results.push({
           id: user.id,
@@ -223,7 +223,7 @@ export function AdminHeader({ title }: AdminHeaderProps) {
     });
 
     // Search posts
-    posts.forEach(post => {
+    (posts as any).forEach((post: any) => {
       if (post.title.toLowerCase().includes(query) || 
           post.excerpt?.toLowerCase().includes(query)) {
         results.push({
@@ -238,9 +238,9 @@ export function AdminHeader({ title }: AdminHeaderProps) {
     });
 
     // Search comments
-    comments.forEach(comment => {
+    (comments as any).forEach((comment: any) => {
       if (comment.content_markdown.toLowerCase().includes(query)) {
-        const post = posts.find(p => p.id === comment.post_id);
+        const post = (posts as any).find((p: any) => p.id === comment.post_id);
         results.push({
           id: comment.id,
           type: 'comment',
@@ -253,7 +253,7 @@ export function AdminHeader({ title }: AdminHeaderProps) {
     });
 
     // Search categories
-    categories.forEach(category => {
+    (categories as any).forEach((category: any) => {
       if (category.name.toLowerCase().includes(query)) {
         results.push({
           id: category.id,
@@ -267,7 +267,7 @@ export function AdminHeader({ title }: AdminHeaderProps) {
     });
 
     // Search tags
-    tags.forEach(tag => {
+    (tags as any).forEach((tag: any) => {
       if (tag.name.toLowerCase().includes(query)) {
         results.push({
           id: tag.id,

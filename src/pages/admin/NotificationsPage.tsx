@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { DataTable, Column } from '@/components/admin/DataTable';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
@@ -20,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Send, Users } from 'lucide-react';
+import { Send, Users, Mail, MailOpen, CheckSquare, Square } from 'lucide-react';
 import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchTableData, deleteRecord, insertRecord } from '@/lib/database';
@@ -32,8 +33,11 @@ export default function NotificationsPage() {
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
+  const [selectedNotifications, setSelectedNotifications] = useState<string[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [sendToAll, setSendToAll] = useState(false);
+  const [editingUser, setEditingUser] = useState<Notification | null>(null);
+  const [viewingUser, setViewingUser] = useState<Notification | null>(null);
   const [formData, setFormData] = useState({
     user_id: '',
     title: '',
@@ -61,7 +65,12 @@ export default function NotificationsPage() {
       console.log('Fetching notifications...');
       const { data, error } = await supabaseAdmin
         .from('notifications')
-        .select('*')
+        .select(`
+          *,
+          profiles!notifications_user_id_fkey (full_name, profile_image_url),
+          posts!notifications_post_id_fkey (title, slug),
+          from_user:profiles!notifications_from_user_id_fkey (full_name, profile_image_url)
+        `)
         .order('created_at', { ascending: false });
       
       console.log('Notifications query result:', { data, error });
@@ -106,12 +115,55 @@ export default function NotificationsPage() {
     },
   });
 
+  // Mark notification as read mutation
+  const markAsReadMutation = useMutation({
+    mutationFn: async (notificationIds: string[]) => {
+      const { data, error } = await (supabaseAdmin
+        .from('notifications') as any)
+        .update({ read: true, updated_at: new Date().toISOString() })
+        .in('id', notificationIds)
+        .select();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      toast.success(`Marked ${data?.length || 0} notifications as read`);
+      setSelectedNotifications([]);
+    },
+    onError: (error) => {
+      toast.error(`Error marking notifications as read: ${error.message}`);
+    },
+  });
+
+  // Mark notification as unread mutation
+  const markAsUnreadMutation = useMutation({
+    mutationFn: async (notificationIds: string[]) => {
+      const { data, error } = await (supabaseAdmin
+        .from('notifications') as any)
+        .update({ read: false, updated_at: new Date().toISOString() })
+        .in('id', notificationIds)
+        .select();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      toast.success(`Marked ${data?.length || 0} notifications as unread`);
+      setSelectedNotifications([]);
+    },
+    onError: (error) => {
+      toast.error(`Error marking notifications as unread: ${error.message}`);
+    },
+  });
   // Bulk notification mutation
   const bulkNotificationMutation = useMutation({
     mutationFn: async (notifications: Omit<Notification, 'id' | 'created_at'>[]) => {
-      const { data, error } = await supabaseAdmin
-        .from('notifications')
-        .insert(notifications as any)
+      const { data, error } = await (supabaseAdmin
+        .from('notifications') as any)
+        .insert(notifications)
         .select();
       
       if (error) throw error;
@@ -134,14 +186,42 @@ export default function NotificationsPage() {
   const getFromUserName = (n: any) => (n as any).from_user?.full_name || 'System';
 
   const columns: Column<Notification>[] = [
+    {
+      key: 'select',
+      header: 'Select',
+      render: (n) => (
+        <Checkbox
+          checked={selectedNotifications.includes(n.id)}
+          onCheckedChange={(checked) => {
+            if (checked) {
+              setSelectedNotifications([...selectedNotifications, n.id]);
+            } else {
+              setSelectedNotifications(selectedNotifications.filter(id => id !== n.id));
+            }
+          }}
+        />
+      ),
+    },
     { key: 'title', header: 'Title' },
     {
       key: 'user_id',
       header: 'Recipient',
       render: (n) => (
-        <div>
-          <div className="font-medium">User ID: {n.user_id?.slice(0, 8)}...</div>
-          <div className="text-xs text-muted-foreground">{getUserName(n)}</div>
+        <div className="flex items-center gap-2">
+          <Avatar className="h-6 w-6">
+            <AvatarImage src={(n as any).profiles?.profile_image_url} />
+            <AvatarFallback className="text-xs">
+              {(n as any).profiles?.full_name?.[0] || 'U'}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <div className="text-xs font-medium">
+              {(n as any).profiles?.full_name || 'Unknown User'}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              ID: {n.user_id?.slice(0, 8)}...
+            </div>
+          </div>
         </div>
       ),
     },
@@ -154,8 +234,8 @@ export default function NotificationsPage() {
       key: 'message',
       header: 'Message',
       render: (n) => (
-        <div className="max-w-md">
-          <p className="text-sm truncate">{n.message || 'No message'}</p>
+        <div className="max-w-lg">
+          <p className="text-xs leading-relaxed">{n.message || 'No message'}</p>
         </div>
       ),
     },
@@ -163,35 +243,65 @@ export default function NotificationsPage() {
       key: 'post_id',
       header: 'Related Post',
       render: (n) => n.post_id ? (
-        <div className="text-sm">
+        <div className="text-xs">
           <div className="font-medium">{getPostTitle(n)}</div>
-          <div className="text-xs text-muted-foreground">ID: {n.post_id.slice(0, 8)}...</div>
+          <div className="text-muted-foreground">ID: {n.post_id.slice(0, 8)}...</div>
         </div>
       ) : (
-        <span className="text-sm text-muted-foreground">No post</span>
+        <span className="text-xs text-muted-foreground">No post</span>
       ),
     },
     {
       key: 'from_user_id',
       header: 'From',
-      render: (n) => n.from_user_id ? getFromUserName(n) : 'System',
+      render: (n) => (
+        <div className="flex items-center gap-2">
+          {(n as any).from_user?.profile_image_url && (
+            <Avatar className="h-5 w-5">
+              <AvatarImage src={(n as any).from_user.profile_image_url} />
+              <AvatarFallback className="text-xs">
+                {(n as any).from_user?.full_name?.[0] || 'S'}
+              </AvatarFallback>
+            </Avatar>
+          )}
+          <span className="text-xs">
+            {(n as any).from_user?.full_name || 'System'}
+          </span>
+        </div>
+      ),
     },
     {
       key: 'read',
       header: 'Status',
       render: (n) => (
-        <Badge variant={n.read ? 'outline' : 'default'}>
-          {n.read ? 'Read' : 'Unread'}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant={n.read ? 'outline' : 'default'}>
+            {n.read ? 'Read' : 'Unread'}
+          </Badge>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (n.read) {
+                markAsUnreadMutation.mutate([n.id]);
+              } else {
+                markAsReadMutation.mutate([n.id]);
+              }
+            }}
+            className="h-6 w-6 p-0"
+          >
+            {n.read ? <Mail className="h-3 w-3" /> : <MailOpen className="h-3 w-3" />}
+          </Button>
+        </div>
       ),
     },
     { 
       key: 'created_at', 
       header: 'Date',
       render: (n) => (
-        <div className="text-sm">
+        <div className="text-xs">
           <div>{new Date(n.created_at).toLocaleDateString()}</div>
-          <div className="text-xs text-muted-foreground">
+          <div className="text-muted-foreground">
             {new Date(n.created_at).toLocaleTimeString()}
           </div>
         </div>
@@ -209,6 +319,36 @@ export default function NotificationsPage() {
     setSelectedUsers([]);
     setSendToAll(false);
     setIsBulkDialogOpen(true);
+  };
+
+  const handleBulkMarkAsRead = () => {
+    if (selectedNotifications.length === 0) {
+      toast.error('Please select notifications to mark as read');
+      return;
+    }
+    markAsReadMutation.mutate(selectedNotifications);
+  };
+
+  const handleBulkMarkAsUnread = () => {
+    if (selectedNotifications.length === 0) {
+      toast.error('Please select notifications to mark as unread');
+      return;
+    }
+    markAsUnreadMutation.mutate(selectedNotifications);
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedNotifications.length === 0) {
+      toast.error('Please select notifications to delete');
+      return;
+    }
+    
+    if (confirm(`Are you sure you want to delete ${selectedNotifications.length} notification(s)?`)) {
+      selectedNotifications.forEach(id => {
+        deleteNotificationMutation.mutate(id);
+      });
+      setSelectedNotifications([]);
+    }
   };
 
   const handleDelete = (notification: Notification) => {
@@ -272,20 +412,76 @@ export default function NotificationsPage() {
       ) : error ? (
         <div className="text-center py-8 text-red-500">Error loading notifications: {error.message}</div>
       ) : (
-        <DataTable
-          data={notifications}
-          columns={columns}
-          searchKey="title"
-          onAdd={handleAdd}
-          onDelete={handleDelete}
-          addLabel="Send Notification"
-          extraActions={
-            <Button onClick={handleBulkAdd} variant="outline">
-              <Users className="w-4 h-4 mr-2" />
-              Bulk Send
-            </Button>
-          }
-        />
+        <>
+          {/* Bulk Action Bar */}
+          {selectedNotifications.length > 0 || notifications.length > 0 ? (
+            <div className="flex items-center gap-2 p-3 bg-muted rounded-lg mb-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={selectedNotifications.length === notifications.length && notifications.length > 0}
+                  onCheckedChange={(checked) => {
+                    if (checked) {
+                      setSelectedNotifications((notifications as any).map((n: any) => n.id));
+                    } else {
+                      setSelectedNotifications([]);
+                    }
+                  }}
+                />
+                <span className="text-sm font-medium">
+                  {selectedNotifications.length > 0 
+                    ? `${selectedNotifications.length} notification${selectedNotifications.length > 1 ? 's' : ''} selected`
+                    : `Select all ${notifications.length} notifications`
+                  }
+                </span>
+              </div>
+              {selectedNotifications.length > 0 && (
+                <div className="flex gap-2 ml-auto">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBulkMarkAsRead}
+                    disabled={markAsReadMutation.isPending}
+                  >
+                    <MailOpen className="h-4 w-4 mr-1" />
+                    Mark as Read
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBulkMarkAsUnread}
+                    disabled={markAsUnreadMutation.isPending}
+                  >
+                    <Mail className="h-4 w-4 mr-1" />
+                    Mark as Unread
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleBulkDelete}
+                    disabled={deleteNotificationMutation.isPending}
+                  >
+                    Delete Selected
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : null}
+          
+          <DataTable
+            data={notifications}
+            columns={columns}
+            searchKey="title"
+            onAdd={handleAdd}
+            onDelete={handleDelete}
+            addLabel="Send Notification"
+            extraActions={
+              <Button onClick={handleBulkAdd} variant="outline">
+                <Users className="w-4 h-4 mr-2" />
+                Bulk Send
+              </Button>
+            }
+          />
+        </>
       )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
