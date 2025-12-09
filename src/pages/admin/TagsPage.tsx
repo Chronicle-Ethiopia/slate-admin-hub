@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { DataTable, Column } from '@/components/admin/DataTable';
-import { mockTags } from '@/data/mockData';
 import {
   Dialog,
   DialogContent,
@@ -11,14 +10,76 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { fetchTableData, deleteRecord, updateRecord, insertRecord } from '@/lib/database';
+import type { Database } from '@/lib/supabase';
 
-type Tag = typeof mockTags[0];
+type Tag = Database['public']['Tables']['tags']['Row'];
 
 export default function TagsPage() {
-  const [tags, setTags] = useState(mockTags);
+  const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTag, setEditingTag] = useState<Tag | null>(null);
-  const [formData, setFormData] = useState({ name: '', slug: '', color: '#3B82F6' });
+  const [formData, setFormData] = useState({
+    name: '',
+    slug: '',
+    color: '#000000',
+  });
+
+  // Fetch tags
+  const { data: tags = [], isLoading, error } = useQuery({
+    queryKey: ['tags'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tags')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Delete tag mutation
+  const deleteTagMutation = useMutation({
+    mutationFn: (tagId: string) => deleteRecord('tags', tagId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      toast.success('Tag deleted successfully');
+    },
+    onError: (error) => {
+      toast.error(`Error deleting tag: ${error.message}`);
+    },
+  });
+
+  // Update tag mutation
+  const updateTagMutation = useMutation({
+    mutationFn: (tagData: { id: string; data: Partial<Tag> }) => 
+      updateRecord('tags', tagData.id, tagData.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      toast.success('Tag updated successfully');
+      setIsDialogOpen(false);
+    },
+    onError: (error) => {
+      toast.error(`Error updating tag: ${error.message}`);
+    },
+  });
+
+  // Create tag mutation
+  const createTagMutation = useMutation({
+    mutationFn: (tagData: Omit<Tag, 'id' | 'created_at'>) => 
+      insertRecord('tags', tagData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      toast.success('Tag created successfully');
+      setIsDialogOpen(false);
+    },
+    onError: (error) => {
+      toast.error(`Error creating tag: ${error.message}`);
+    },
+  });
 
   const columns: Column<Tag>[] = [
     {
@@ -58,24 +119,18 @@ export default function TagsPage() {
   };
 
   const handleDelete = (tag: Tag) => {
-    setTags(tags.filter((t) => t.id !== tag.id));
-    toast.success('Tag deleted successfully');
+    deleteTagMutation.mutate(tag.id);
   };
 
   const handleSubmit = () => {
     if (editingTag) {
-      setTags(tags.map((t) => (t.id === editingTag.id ? { ...t, ...formData } : t)));
-      toast.success('Tag updated successfully');
+      updateTagMutation.mutate({
+        id: editingTag.id,
+        data: formData,
+      });
     } else {
-      const newTag: Tag = {
-        id: String(Date.now()),
-        ...formData,
-        created_at: new Date().toISOString().split('T')[0],
-      };
-      setTags([...tags, newTag]);
-      toast.success('Tag created successfully');
+      createTagMutation.mutate(formData);
     }
-    setIsDialogOpen(false);
   };
 
   return (
@@ -85,15 +140,21 @@ export default function TagsPage() {
         <p className="text-muted-foreground">Manage post tags.</p>
       </div>
 
-      <DataTable
-        data={tags}
-        columns={columns}
-        searchKey="name"
-        onAdd={handleAdd}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        addLabel="Add Tag"
-      />
+      {isLoading ? (
+        <div className="text-center py-8">Loading tags...</div>
+      ) : error ? (
+        <div className="text-center py-8 text-red-500">Error loading tags: {error.message}</div>
+      ) : (
+        <DataTable
+          data={tags}
+          columns={columns}
+          searchKey="name"
+          onAdd={handleAdd}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          addLabel="Add Tag"
+        />
+      )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-md">

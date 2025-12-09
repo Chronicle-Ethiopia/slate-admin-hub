@@ -1,35 +1,67 @@
 import { useState } from 'react';
 import { DataTable, Column } from '@/components/admin/DataTable';
-import { mockLikes, mockProfiles, mockPosts } from '@/data/mockData';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { deleteRecord } from '@/lib/database';
+import type { Database } from '@/lib/supabase';
 
-type Like = typeof mockLikes[0];
+type Like = Database['public']['Tables']['likes']['Row'];
 
 export default function LikesPage() {
-  const [likes, setLikes] = useState(mockLikes);
+  const queryClient = useQueryClient();
 
-  const getUserName = (id: string) => mockProfiles.find((p) => p.id === id)?.full_name || 'Unknown';
-  const getPostTitle = (id: string) => mockPosts.find((p) => p.id === id)?.title || 'Unknown Post';
+  // Fetch likes with user and post data
+  const { data: likes = [], isLoading, error } = useQuery({
+    queryKey: ['likes'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('likes')
+        .select(`
+          *,
+          profiles!likes_user_id_fkey (full_name),
+          posts!likes_post_id_fkey (title)
+        `)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Delete like mutation
+  const deleteLikeMutation = useMutation({
+    mutationFn: (likeId: string) => deleteRecord('likes', likeId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['likes'] });
+      toast.success('Like removed successfully');
+    },
+    onError: (error) => {
+      toast.error(`Error removing like: ${error.message}`);
+    },
+  });
+
+  const getUserName = (like: any) => (like as any).profiles?.full_name || 'Unknown';
+  const getPostTitle = (like: any) => (like as any).posts?.title || 'Unknown Post';
 
   const columns: Column<Like>[] = [
     {
       key: 'user_id',
       header: 'User',
-      render: (like) => getUserName(like.user_id),
+      render: (like) => getUserName(like),
     },
     {
       key: 'post_id',
       header: 'Post',
       render: (like) => (
-        <p className="max-w-xs truncate">{getPostTitle(like.post_id)}</p>
+        <p className="max-w-xs truncate">{getPostTitle(like)}</p>
       ),
     },
     { key: 'created_at', header: 'Date' },
   ];
 
   const handleDelete = (like: Like) => {
-    setLikes(likes.filter((l) => l.id !== like.id));
-    toast.success('Like removed successfully');
+    deleteLikeMutation.mutate(like.id);
   };
 
   return (
@@ -39,11 +71,13 @@ export default function LikesPage() {
         <p className="text-muted-foreground">View and manage post likes.</p>
       </div>
 
-      <DataTable
-        data={likes}
-        columns={columns}
-        onDelete={handleDelete}
-      />
+      {isLoading ? (
+        <div className="text-center py-8">Loading likes...</div>
+      ) : error ? (
+        <div className="text-center py-8 text-red-500">Error loading likes: {error.message}</div>
+      ) : (
+        <DataTable data={likes} columns={columns} onDelete={handleDelete} />
+      )}
     </div>
   );
 }

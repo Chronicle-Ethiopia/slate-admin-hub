@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { DataTable, Column } from '@/components/admin/DataTable';
-import { mockNotifications, mockProfiles } from '@/data/mockData';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
@@ -21,27 +20,84 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Send } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { fetchTableData, deleteRecord, insertRecord } from '@/lib/database';
+import type { Database } from '@/lib/supabase';
 
-type Notification = typeof mockNotifications[0];
+type Notification = Database['public']['Tables']['notifications']['Row'];
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState(mockNotifications);
+  const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     user_id: '',
-    type: 'info',
     title: '',
     message: '',
+    type: 'info',
+    read: false,
+    post_id: null,
+    from_user_id: null,
+    updated_at: new Date().toISOString(),
   });
 
-  const getUserName = (id: string) => mockProfiles.find((p) => p.id === id)?.full_name || 'Unknown';
+  // Fetch notifications with user data
+  const { data: notifications = [], isLoading, error } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select(`
+          *,
+          profiles!notifications_user_id_fkey (full_name)
+        `)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Fetch users for dropdown
+  const { data: users = [] } = useQuery({
+    queryKey: ['profiles'],
+    queryFn: () => fetchTableData('profiles', 'id, full_name'),
+  });
+
+  // Delete notification mutation
+  const deleteNotificationMutation = useMutation({
+    mutationFn: (notificationId: string) => deleteRecord('notifications', notificationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      toast.success('Notification deleted successfully');
+    },
+    onError: (error) => {
+      toast.error(`Error deleting notification: ${error.message}`);
+    },
+  });
+
+  // Create notification mutation
+  const createNotificationMutation = useMutation({
+    mutationFn: (notificationData: Omit<Notification, 'id' | 'created_at'>) => 
+      insertRecord('notifications', notificationData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      toast.success('Notification sent successfully');
+      setIsDialogOpen(false);
+    },
+    onError: (error) => {
+      toast.error(`Error sending notification: ${error.message}`);
+    },
+  });
+
+  const getUserName = (n: any) => (n as any).profiles?.full_name || 'Unknown';
 
   const columns: Column<Notification>[] = [
     { key: 'title', header: 'Title' },
     {
       key: 'user_id',
       header: 'Recipient',
-      render: (n) => getUserName(n.user_id),
+      render: (n) => getUserName(n),
     },
     {
       key: 'type',
@@ -61,25 +117,16 @@ export default function NotificationsPage() {
   ];
 
   const handleAdd = () => {
-    setFormData({ user_id: '', type: 'info', title: '', message: '' });
+    setFormData({ user_id: '', type: 'info', title: '', message: '', read: false, post_id: null, from_user_id: null, updated_at: new Date().toISOString() });
     setIsDialogOpen(true);
   };
 
   const handleDelete = (notification: Notification) => {
-    setNotifications(notifications.filter((n) => n.id !== notification.id));
-    toast.success('Notification deleted');
+    deleteNotificationMutation.mutate(notification.id);
   };
 
   const handleSubmit = () => {
-    const newNotification: Notification = {
-      id: String(Date.now()),
-      ...formData,
-      read: false,
-      created_at: new Date().toISOString().split('T')[0],
-    };
-    setNotifications([newNotification, ...notifications]);
-    toast.success('Notification sent successfully');
-    setIsDialogOpen(false);
+    createNotificationMutation.mutate(formData);
   };
 
   return (
@@ -89,14 +136,20 @@ export default function NotificationsPage() {
         <p className="text-muted-foreground">Send and manage user notifications.</p>
       </div>
 
-      <DataTable
-        data={notifications}
-        columns={columns}
-        searchKey="title"
-        onAdd={handleAdd}
-        onDelete={handleDelete}
-        addLabel="Send Notification"
-      />
+      {isLoading ? (
+        <div className="text-center py-8">Loading notifications...</div>
+      ) : error ? (
+        <div className="text-center py-8 text-red-500">Error loading notifications: {error.message}</div>
+      ) : (
+        <DataTable
+          data={notifications}
+          columns={columns}
+          searchKey="title"
+          onAdd={handleAdd}
+          onDelete={handleDelete}
+          addLabel="Send Notification"
+        />
+      )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-md">
@@ -114,9 +167,9 @@ export default function NotificationsPage() {
                   <SelectValue placeholder="Select user" />
                 </SelectTrigger>
                 <SelectContent>
-                  {mockProfiles.map((profile) => (
-                    <SelectItem key={profile.id} value={profile.id}>
-                      {profile.full_name}
+                  {users.map((user: any) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.full_name}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -126,21 +126,26 @@ export function DataTable<T extends { id: string }>({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const perPage = 10;
 
-  const filteredData = searchKey
-    ? data.filter((item) =>
-        String(item[searchKey]).toLowerCase().includes(search.toLowerCase())
-      )
-    : data;
-
-  const totalPages = Math.ceil(filteredData.length / perPage);
-  const paginatedData = filteredData.slice((page - 1) * perPage, page * perPage);
-
   const getValue = (item: T, key: keyof T | string): any => {
     if (typeof key === 'string' && key.includes('.')) {
       return key.split('.').reduce((obj: any, k) => obj?.[k], item);
     }
     return item[key as keyof T];
   };
+
+  const filteredData = searchKey
+    ? data.filter((item) =>
+        String(item[searchKey]).toLowerCase().includes(search.toLowerCase())
+      )
+    : data.filter((item) =>
+        columns.some((column) => {
+          const value = getValue(item, column.key);
+          return value && String(value).toLowerCase().includes(search.toLowerCase());
+        })
+      );
+
+  const totalPages = Math.ceil(filteredData.length / perPage);
+  const paginatedData = filteredData.slice((page - 1) * perPage, page * perPage);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === paginatedData.length) {

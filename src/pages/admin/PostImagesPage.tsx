@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { DataTable, Column } from '@/components/admin/DataTable';
-import { mockPostImages, mockPosts } from '@/data/mockData';
 import {
   Dialog,
   DialogContent,
@@ -18,11 +17,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { fetchTableData, deleteRecord, updateRecord, insertRecord } from '@/lib/database';
+import type { Database } from '@/lib/supabase';
 
-type PostImage = typeof mockPostImages[0];
+type PostImage = Database['public']['Tables']['post_images']['Row'];
 
 export default function PostImagesPage() {
-  const [images, setImages] = useState(mockPostImages);
+  const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingImage, setEditingImage] = useState<PostImage | null>(null);
   const [formData, setFormData] = useState({
@@ -32,7 +35,69 @@ export default function PostImagesPage() {
     order_index: 0,
   });
 
-  const getPostTitle = (id: string) => mockPosts.find((p) => p.id === id)?.title || 'Unknown';
+  // Fetch post images with post data
+  const { data: images = [], isLoading, error } = useQuery({
+    queryKey: ['post-images'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('post_images')
+        .select(`
+          *,
+          posts!post_images_post_id_fkey (title)
+        `)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Fetch posts for dropdown
+  const { data: posts = [] } = useQuery({
+    queryKey: ['posts'],
+    queryFn: () => fetchTableData('posts', 'id, title'),
+  });
+
+  // Delete image mutation
+  const deleteImageMutation = useMutation({
+    mutationFn: (imageId: string) => deleteRecord('post_images', imageId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['post-images'] });
+      toast.success('Image deleted successfully');
+    },
+    onError: (error) => {
+      toast.error(`Error deleting image: ${error.message}`);
+    },
+  });
+
+  // Update image mutation
+  const updateImageMutation = useMutation({
+    mutationFn: (imageData: { id: string; data: Partial<PostImage> }) => 
+      updateRecord('post_images', imageData.id, imageData.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['post-images'] });
+      toast.success('Image updated successfully');
+      setIsDialogOpen(false);
+    },
+    onError: (error) => {
+      toast.error(`Error updating image: ${error.message}`);
+    },
+  });
+
+  // Create image mutation
+  const createImageMutation = useMutation({
+    mutationFn: (imageData: Omit<PostImage, 'id' | 'created_at'>) => 
+      insertRecord('post_images', imageData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['post-images'] });
+      toast.success('Image created successfully');
+      setIsDialogOpen(false);
+    },
+    onError: (error) => {
+      toast.error(`Error creating image: ${error.message}`);
+    },
+  });
+  const getPostTitle = (img: any) => (img as any).posts?.title || 'Unknown';
 
   const columns: Column<PostImage>[] = [
     {
@@ -49,7 +114,7 @@ export default function PostImagesPage() {
     {
       key: 'post_id',
       header: 'Post',
-      render: (img) => <span className="truncate max-w-[200px] block">{getPostTitle(img.post_id)}</span>,
+      render: (img) => <span className="truncate max-w-[200px] block">{getPostTitle(img)}</span>,
     },
     { key: 'alt_text', header: 'Alt Text' },
     { key: 'order_index', header: 'Order' },
@@ -73,23 +138,18 @@ export default function PostImagesPage() {
   };
 
   const handleDelete = (image: PostImage) => {
-    setImages(images.filter((i) => i.id !== image.id));
-    toast.success('Image deleted');
+    deleteImageMutation.mutate(image.id);
   };
 
   const handleSubmit = () => {
     if (editingImage) {
-      setImages(images.map((i) => (i.id === editingImage.id ? { ...i, ...formData } : i)));
-      toast.success('Image updated');
+      updateImageMutation.mutate({
+        id: editingImage.id,
+        data: formData,
+      });
     } else {
-      const newImage: PostImage = {
-        id: String(Date.now()),
-        ...formData,
-      };
-      setImages([...images, newImage]);
-      toast.success('Image added');
+      createImageMutation.mutate(formData);
     }
-    setIsDialogOpen(false);
   };
 
   return (
@@ -99,14 +159,20 @@ export default function PostImagesPage() {
         <p className="text-muted-foreground">Manage images attached to posts.</p>
       </div>
 
-      <DataTable
-        data={images}
-        columns={columns}
-        onAdd={handleAdd}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        addLabel="Add Image"
-      />
+      {isLoading ? (
+        <div className="text-center py-8">Loading images...</div>
+      ) : error ? (
+        <div className="text-center py-8 text-red-500">Error loading images: {error.message}</div>
+      ) : (
+        <DataTable
+          data={images}
+          columns={columns}
+          onAdd={handleAdd}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          addLabel="Add Image"
+        />
+      )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-md">
@@ -124,7 +190,7 @@ export default function PostImagesPage() {
                   <SelectValue placeholder="Select post" />
                 </SelectTrigger>
                 <SelectContent>
-                  {mockPosts.map((post) => (
+                  {posts.map((post: any) => (
                     <SelectItem key={post.id} value={post.id}>
                       {post.title}
                     </SelectItem>

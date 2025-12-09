@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { DataTable, Column } from '@/components/admin/DataTable';
-import { mockRoles } from '@/data/mockData';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
@@ -14,18 +13,78 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { fetchTableData, deleteRecord, updateRecord, insertRecord } from '@/lib/database';
+import type { Database } from '@/lib/supabase';
 
-type Role = typeof mockRoles[0];
+type Role = Database['public']['Tables']['roles']['Row'];
 
 export default function RolesPage() {
-  const [roles, setRoles] = useState(mockRoles);
+  const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     display_name: '',
     description: '',
+    permissions: {},
     is_system_role: false,
+    updated_at: new Date().toISOString(),
+  });
+
+  // Fetch roles
+  const { data: roles = [], isLoading, error } = useQuery({
+    queryKey: ['roles'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('roles')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Delete role mutation
+  const deleteRoleMutation = useMutation({
+    mutationFn: (roleId: string) => deleteRecord('roles', roleId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
+      toast.success('Role deleted successfully');
+    },
+    onError: (error) => {
+      toast.error(`Error deleting role: ${error.message}`);
+    },
+  });
+
+  // Update role mutation
+  const updateRoleMutation = useMutation({
+    mutationFn: (roleData: { id: string; data: Partial<Role> }) => 
+      updateRecord('roles', roleData.id, roleData.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
+      toast.success('Role updated successfully');
+      setIsDialogOpen(false);
+    },
+    onError: (error) => {
+      toast.error(`Error updating role: ${error.message}`);
+    },
+  });
+
+  // Create role mutation
+  const createRoleMutation = useMutation({
+    mutationFn: (roleData: Omit<Role, 'id' | 'created_at'>) => 
+      insertRecord('roles', roleData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
+      toast.success('Role created successfully');
+      setIsDialogOpen(false);
+    },
+    onError: (error) => {
+      toast.error(`Error creating role: ${error.message}`);
+    },
   });
 
   const columns: Column<Role>[] = [
@@ -49,7 +108,7 @@ export default function RolesPage() {
 
   const handleAdd = () => {
     setEditingRole(null);
-    setFormData({ name: '', display_name: '', description: '', is_system_role: false });
+    setFormData({ name: '', display_name: '', description: '', permissions: {}, is_system_role: false, updated_at: new Date().toISOString() });
     setIsDialogOpen(true);
   };
 
@@ -59,7 +118,9 @@ export default function RolesPage() {
       name: role.name,
       display_name: role.display_name,
       description: role.description || '',
+      permissions: role.permissions || {},
       is_system_role: role.is_system_role,
+      updated_at: new Date().toISOString(),
     });
     setIsDialogOpen(true);
   };
@@ -69,24 +130,18 @@ export default function RolesPage() {
       toast.error('Cannot delete system roles');
       return;
     }
-    setRoles(roles.filter((r) => r.id !== role.id));
-    toast.success('Role deleted successfully');
+    deleteRoleMutation.mutate(role.id);
   };
 
   const handleSubmit = () => {
     if (editingRole) {
-      setRoles(roles.map((r) => (r.id === editingRole.id ? { ...r, ...formData } : r)));
-      toast.success('Role updated successfully');
+      updateRoleMutation.mutate({
+        id: editingRole.id,
+        data: formData,
+      });
     } else {
-      const newRole: Role = {
-        id: String(Date.now()),
-        ...formData,
-        created_at: new Date().toISOString().split('T')[0],
-      };
-      setRoles([...roles, newRole]);
-      toast.success('Role created successfully');
+      createRoleMutation.mutate(formData);
     }
-    setIsDialogOpen(false);
   };
 
   return (
@@ -96,15 +151,20 @@ export default function RolesPage() {
         <p className="text-muted-foreground">Manage system and custom roles.</p>
       </div>
 
-      <DataTable
-        data={roles}
-        columns={columns}
-        searchKey="display_name"
-        onAdd={handleAdd}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        addLabel="Add Role"
-      />
+      {isLoading ? (
+        <div className="text-center py-8">Loading roles...</div>
+      ) : error ? (
+        <div className="text-center py-8 text-red-500">Error loading roles: {error.message}</div>
+      ) : (
+        <DataTable
+          data={roles}
+          columns={columns}
+          onAdd={handleAdd}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          addLabel="Add Role"
+        />
+      )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-md">
