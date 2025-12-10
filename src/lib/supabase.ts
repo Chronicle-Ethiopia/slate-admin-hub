@@ -3,9 +3,11 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 
-// Debug logging
-console.log('Supabase URL:', supabaseUrl)
-console.log('Supabase Key:', supabaseAnonKey ? 'Present' : 'Missing')
+// Remove debug logging in production
+if (import.meta.env.DEV) {
+  console.log('Supabase URL:', supabaseUrl)
+  console.log('Supabase Key:', supabaseAnonKey ? 'Present' : 'Missing')
+}
 
 // Handle missing environment variables
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -15,40 +17,63 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables. Please check your .env file and restart the development server.')
 }
 
-// Singleton instances to prevent multiple clients
-let supabaseInstance: ReturnType<typeof createClient> | null = null
-let supabaseAdminInstance: ReturnType<typeof createClient> | null = null
-
-export const supabase = (() => {
-  if (!supabaseInstance) {
-    supabaseInstance = createClient(supabaseUrl, supabaseAnonKey)
-  }
-  return supabaseInstance
-})()
-
 // For admin operations that require elevated permissions
 const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
 
-console.log('Service Role Key:', serviceRoleKey ? 'Present' : 'Missing')
+if (import.meta.env.DEV) {
+  console.log('Service Role Key:', serviceRoleKey ? 'Present' : 'Missing')
+}
+
+// Create single instances with global caching to prevent recreation during hot reload
+declare global {
+  interface Window {
+    __SUPABASE_CLIENT__?: ReturnType<typeof createClient<Database>>
+    __SUPABASE_ADMIN_CLIENT__?: ReturnType<typeof createClient<Database>>
+  }
+}
+
+export const supabase = (() => {
+  if (typeof window !== 'undefined' && window.__SUPABASE_CLIENT__) {
+    return window.__SUPABASE_CLIENT__
+  }
+  
+  const client = createClient<Database>(supabaseUrl, supabaseAnonKey)
+  
+  if (typeof window !== 'undefined') {
+    window.__SUPABASE_CLIENT__ = client
+  }
+  
+  return client
+})()
 
 export const supabaseAdmin = (() => {
-  if (!supabaseAdminInstance) {
-    if (serviceRoleKey) {
-      supabaseAdminInstance = createClient(
-        supabaseUrl,
-        serviceRoleKey,
-        {
-          auth: {
-            autoRefreshToken: false,
-            persistSession: false
-          }
-        }
-      )
-    } else {
-      supabaseAdminInstance = supabase
-    }
+  if (typeof window !== 'undefined' && window.__SUPABASE_ADMIN_CLIENT__) {
+    return window.__SUPABASE_ADMIN_CLIENT__
   }
-  return supabaseAdminInstance
+  
+  let client: ReturnType<typeof createClient<Database>>
+  
+  if (serviceRoleKey) {
+    client = createClient<Database>(
+      supabaseUrl,
+      serviceRoleKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    )
+  } else {
+    // Use the same client instance to avoid multiple auth clients
+    client = supabase
+  }
+  
+  if (typeof window !== 'undefined') {
+    window.__SUPABASE_ADMIN_CLIENT__ = client
+  }
+  
+  return client
 })()
 
 // Database types based on the schema

@@ -5,40 +5,46 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { SupabaseProvider } from "@/components/auth/SupabaseProvider";
 import { ProtectedRoute, AdminRoute, ModeratorRoute, EditorRoute } from "@/components/auth/ProtectedRoute";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { Suspense } from 'react';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
 import ProfilePage from "./pages/ProfilePage";
 import SettingsPage from "./pages/SettingsPage";
-import Dashboard from "./pages/admin/Dashboard";
-import UsersPage from "./pages/admin/UsersPage";
-import PostsPage from "./pages/admin/PostsPage";
-import CategoriesPage from "./pages/admin/CategoriesPage";
-import TagsPage from "./pages/admin/TagsPage";
-import CommentsPage from "./pages/admin/CommentsPage";
-import LikesPage from "./pages/admin/LikesPage";
-import BookmarksPage from "./pages/admin/BookmarksPage";
-import FollowersPage from "./pages/admin/FollowersPage";
-import NotificationsPage from "./pages/admin/NotificationsPage";
-import RolesPage from "./pages/admin/RolesPage";
-import UserRolesPage from "./pages/admin/UserRolesPage";
-import RoleAuditPage from "./pages/admin/RoleAuditPage";
-import PostImagesPage from "./pages/admin/PostImagesPage";
-import CommentLikesPage from "./pages/admin/CommentLikesPage";
-import AnalyticsPage from "./pages/admin/AnalyticsPage";
+import {
+  Dashboard,
+  UsersPage,
+  PostsPage,
+  CategoriesPage,
+  TagsPage,
+  CommentsPage,
+  LikesPage,
+  BookmarksPage,
+  FollowersPage,
+  NotificationsPage,
+  RolesPage,
+  UserRolesPage,
+  RoleAuditPage,
+  PostImagesPage,
+  CommentLikesPage,
+  AnalyticsPage,
+} from '@/utils/lazyLoad';
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <ThemeProvider>
-      <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
+    <SupabaseProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/" element={<Index />} />
@@ -59,82 +65,114 @@ const App = () => (
               }>
                 <Route index element={
                   <ProtectedRoute>
-                    <Dashboard />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <Dashboard />
+                    </Suspense>
                   </ProtectedRoute>
                 } />
                 <Route path="users" element={
                   <AdminRoute>
-                    <UsersPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <UsersPage />
+                    </Suspense>
                   </AdminRoute>
                 } />
                 <Route path="posts" element={
                   <EditorRoute>
-                    <PostsPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <PostsPage />
+                    </Suspense>
                   </EditorRoute>
                 } />
                 <Route path="categories" element={
                   <ModeratorRoute>
-                    <CategoriesPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <CategoriesPage />
+                    </Suspense>
                   </ModeratorRoute>
                 } />
                 <Route path="tags" element={
                   <ModeratorRoute>
-                    <TagsPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <TagsPage />
+                    </Suspense>
                   </ModeratorRoute>
                 } />
                 <Route path="comments" element={
                   <ModeratorRoute>
-                    <CommentsPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <CommentsPage />
+                    </Suspense>
                   </ModeratorRoute>
                 } />
                 <Route path="likes" element={
                   <ProtectedRoute>
-                    <LikesPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <LikesPage />
+                    </Suspense>
                   </ProtectedRoute>
                 } />
                 <Route path="comment-likes" element={
                   <ModeratorRoute>
-                    <CommentLikesPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <CommentLikesPage />
+                    </Suspense>
                   </ModeratorRoute>
                 } />
                 <Route path="bookmarks" element={
                   <ProtectedRoute>
-                    <BookmarksPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <BookmarksPage />
+                    </Suspense>
                   </ProtectedRoute>
                 } />
                 <Route path="followers" element={
                   <ProtectedRoute>
-                    <FollowersPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <FollowersPage />
+                    </Suspense>
                   </ProtectedRoute>
                 } />
                 <Route path="notifications" element={
                   <ProtectedRoute>
-                    <NotificationsPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <NotificationsPage />
+                    </Suspense>
                   </ProtectedRoute>
                 } />
                 <Route path="roles" element={
                   <AdminRoute>
-                    <RolesPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <RolesPage />
+                    </Suspense>
                   </AdminRoute>
                 } />
                 <Route path="user-roles" element={
                   <AdminRoute>
-                    <UserRolesPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <UserRolesPage />
+                    </Suspense>
                   </AdminRoute>
                 } />
                 <Route path="role-audit" element={
                   <AdminRoute>
-                    <RoleAuditPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <RoleAuditPage />
+                    </Suspense>
                   </AdminRoute>
                 } />
                 <Route path="post-images" element={
                   <EditorRoute>
-                    <PostImagesPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <PostImagesPage />
+                    </Suspense>
                   </EditorRoute>
                 } />
                 <Route path="analytics" element={
                   <ModeratorRoute>
-                    <AnalyticsPage />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <AnalyticsPage />
+                    </Suspense>
                   </ModeratorRoute>
                 } />
               </Route>
@@ -144,7 +182,8 @@ const App = () => (
         </TooltipProvider>
       </AuthProvider>
     </ThemeProvider>
-  </QueryClientProvider>
+  </SupabaseProvider>
+</QueryClientProvider>
 );
 
 export default App;
